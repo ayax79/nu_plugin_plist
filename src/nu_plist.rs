@@ -2,14 +2,14 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, FixedOffset, Offset, Utc};
 use nu_plugin::{EvaluatedCall, LabeledError, Plugin};
-use nu_protocol::{Category, Signature, Span, Value as NuValue};
+use nu_protocol::{Category, PluginSignature, Span, Value as NuValue};
 use plist::{Date as PlistDate, Dictionary, Value as PlistValue};
 
 pub struct NuPlist;
 
 impl Plugin for NuPlist {
-    fn signature(&self) -> Vec<Signature> {
-        vec![Signature::build("from plist")
+    fn signature(&self) -> Vec<PluginSignature> {
+        vec![PluginSignature::build("from plist")
             .usage("cat file.plist | from plist")
             .category(Category::Experimental)]
     }
