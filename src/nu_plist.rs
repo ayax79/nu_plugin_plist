@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, FixedOffset, Offset, Utc};
 use nu_plugin::{EvaluatedCall, LabeledError, Plugin};
-use nu_protocol::{Category, PluginSignature, Span, Value as NuValue};
+use nu_protocol::{Category, PluginSignature, Span, Value as NuValue, PluginExample};
 use plist::{Date as PlistDate, Dictionary, Value as PlistValue};
 
 pub struct NuPlist;
@@ -10,7 +10,12 @@ pub struct NuPlist;
 impl Plugin for NuPlist {
     fn signature(&self) -> Vec<PluginSignature> {
         vec![PluginSignature::build("from plist")
-            .usage("cat file.plist | from plist")
+            .usage("Parse text as an Apple plist document")
+            .plugin_examples(vec![PluginExample {
+                example: "cat file.plist | from plist".to_string(),
+                description: "Convert a plist file to a table".to_string(),
+                result: None,
+            }])
             .category(Category::Experimental)]
     }
 
