@@ -16,7 +16,9 @@ impl Plugin for NuPlist {
                 description: "Convert a plist file to a table".to_string(),
                 result: None,
             }])
-            .category(Category::Experimental)]
+            .category(Category::Experimental)
+            .vectorizes_over_list(false)
+        ]
     }
 
     fn run(
