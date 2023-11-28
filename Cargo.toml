@@ -7,7 +7,7 @@ license = "MIT"
 
 
 [dependencies]
-plist = "^1.4"
-nu-plugin = "^0.83"
-nu-protocol = "^0.83"
+nu-protocol = { version = "0.87.1", features = ["plugin"] }
+plist = "^1.6"
+nu-plugin = "0.87.1"
 chrono = "^0.4"

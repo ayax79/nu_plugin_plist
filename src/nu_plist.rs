@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, FixedOffset, Offset, Utc};
 use nu_plugin::{EvaluatedCall, LabeledError, Plugin};
-use nu_protocol::{Category, PluginSignature, Span, Value as NuValue, PluginExample};
+use nu_protocol::{record, Category, PluginExample, PluginSignature, Span, Value as NuValue};
 use plist::{Date as PlistDate, Dictionary, Value as PlistValue};
 
 pub struct NuPlist;
@@ -16,9 +16,7 @@ impl Plugin for NuPlist {
                 description: "Convert a plist file to a table".to_string(),
                 result: None,
             }])
-            .category(Category::Experimental)
-            .vectorizes_over_list(false)
-        ]
+            .category(Category::Experimental)]
     }
 
     fn run(
@@ -28,10 +26,10 @@ impl Plugin for NuPlist {
         input: &NuValue,
     ) -> Result<NuValue, LabeledError> {
         match input {
-            NuValue::String { val, span } => {
+            NuValue::String { val, internal_span } => {
                 let plist = plist::from_bytes(val.as_bytes())
-                    .map_err(|e| build_label_error(format!("{}", e), span))?;
-                let converted = convert_plist_value(&plist);
+                    .map_err(|e| build_label_error(format!("{}", e), internal_span))?;
+                let converted = convert_plist_value(&plist, call.head);
                 Ok(converted)
             }
             _ => Err(build_label_error(
@@ -50,65 +48,33 @@ fn build_label_error(msg: String, span: &Span) -> LabeledError {
     }
 }
 
-fn convert_plist_value(plist_val: &PlistValue) -> NuValue {
-    let span = Span::test_data();
+fn convert_plist_value(plist_val: &PlistValue, span: Span) -> NuValue {
     match plist_val {
-        PlistValue::String(s) => NuValue::String {
-            val: s.to_owned(),
-            span,
-        },
-        PlistValue::Boolean(b) => NuValue::Bool {
-            val: *b,
-            span,
-        },
-        PlistValue::Real(r) => NuValue::Float {
-            val: *r,
-            span,
-        },
-        PlistValue::Date(d) => NuValue::Date {
-            val: convert_date(d),
-            span,
-        },
-        PlistValue::Integer(i) => NuValue::Int {
-            val: i.as_signed().unwrap(),
-            span,
-        },
-        PlistValue::Uid(uid) => NuValue::Float {
-            val: f64::from_bits(uid.get()),
-            span,
-        },
-        PlistValue::Data(data) => NuValue::Binary {
-            val: data.to_owned(),
-            span,
-        },
-        PlistValue::Array(arr) => NuValue::List {
-            vals: convert_array(arr),
-            span,
-        },
-        PlistValue::Dictionary(dict) => convert_dict(dict),
-        _ => NuValue::Nothing {
-            span,
-        },
+        PlistValue::String(s) => NuValue::string(s.to_owned(), span),
+        PlistValue::Boolean(b) => NuValue::bool(b.to_owned(), span),
+        PlistValue::Real(r) => NuValue::float(r.to_owned(), span),
+        PlistValue::Date(d) => NuValue::date(convert_date(d), span),
+        PlistValue::Integer(i) => NuValue::int(i.as_signed().unwrap(), span),
+        PlistValue::Uid(uid) => NuValue::float(f64::from_bits(uid.get()), span),
+        PlistValue::Data(data) => NuValue::binary(data.to_owned(), span),
+        PlistValue::Array(arr) => NuValue::list(convert_array(arr, span), span),
+        PlistValue::Dictionary(dict) => convert_dict(dict, span),
+        _ => NuValue::nothing(span),
     }
 }
 
-fn convert_dict(dict: &Dictionary) -> NuValue {
-    let cols: Vec<String> = dict.keys().cloned().collect();
-    let vals: Vec<NuValue> = dict
-        .values()
-        .map(convert_plist_value)
-        .collect();
-    NuValue::Record {
-        cols,
-        vals,
-        span: Span::test_data(),
+fn convert_dict(dict: &Dictionary, span: Span) -> NuValue {
+    let mut result = record!();
+    for i in dict.into_iter() {
+        result.push(i.0, convert_plist_value(i.1, span))
     }
+    NuValue::record(result, span)
 }
 
-fn convert_array(plist_array: &Vec<PlistValue>) -> Vec<NuValue> {
+fn convert_array(plist_array: &Vec<PlistValue>, span: Span) -> Vec<NuValue> {
     plist_array
         .iter()
-        .map(convert_plist_value)
+        .map(|item| convert_plist_value(item, span))
         .collect()
 }
 
