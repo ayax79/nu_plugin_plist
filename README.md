@@ -1,6 +1,6 @@
 # Plist plugin for Nushell
 
-Note: this requires Nushell 0.60 or later
+Note: this requires Nushell 0.89 or later
 
 To install:
 
