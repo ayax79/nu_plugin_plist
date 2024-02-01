@@ -1,0 +1,8 @@
+# Use the version of the rust toolchain that the current stable version of nushell is using
+
+[toolchain]
+# The default profile includes rustc, rust-std, cargo, rust-docs, rustfmt and clippy.
+# https://rust-lang.github.io/rustup/concepts/profiles.html
+profile = "default"
+channel = "1.73.0"
+
