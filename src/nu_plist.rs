@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, FixedOffset, Offset, Utc};
 use nu_plugin::{EvaluatedCall, LabeledError, Plugin};
-use nu_protocol::{Category, PluginSignature, Span, Value as NuValue, PluginExample};
+use nu_protocol::{Category, PluginExample, PluginSignature, Record, Span, Type, Value as NuValue};
 use plist::{Date as PlistDate, Dictionary, Value as PlistValue};
 
 pub struct NuPlist;
@@ -10,15 +10,14 @@ pub struct NuPlist;
 impl Plugin for NuPlist {
     fn signature(&self) -> Vec<PluginSignature> {
         vec![PluginSignature::build("from plist")
+            .input_output_types(vec![(Type::String, Type::Any)])
             .usage("Parse text as an Apple plist document")
             .plugin_examples(vec![PluginExample {
                 example: "cat file.plist | from plist".to_string(),
                 description: "Convert a plist file to a table".to_string(),
                 result: None,
             }])
-            .category(Category::Experimental)
-            .vectorizes_over_list(false)
-        ]
+            .category(Category::Formats)]
     }
 
     fn run(
@@ -28,10 +27,10 @@ impl Plugin for NuPlist {
         input: &NuValue,
     ) -> Result<NuValue, LabeledError> {
         match input {
-            NuValue::String { val, span } => {
+            NuValue::String { val, .. } => {
                 let plist = plist::from_bytes(val.as_bytes())
-                    .map_err(|e| build_label_error(format!("{}", e), span))?;
-                let converted = convert_plist_value(&plist);
+                    .map_err(|e| build_label_error(format!("{}", e), &call.head))?;
+                let converted = convert_plist_value(&plist)?;
                 Ok(converted)
             }
             _ => Err(build_label_error(
@@ -50,66 +49,38 @@ fn build_label_error(msg: String, span: &Span) -> LabeledError {
     }
 }
 
-fn convert_plist_value(plist_val: &PlistValue) -> NuValue {
+fn convert_plist_value(plist_val: &PlistValue) -> Result<NuValue, LabeledError> {
     let span = Span::test_data();
     match plist_val {
-        PlistValue::String(s) => NuValue::String {
-            val: s.to_owned(),
-            span,
-        },
-        PlistValue::Boolean(b) => NuValue::Bool {
-            val: *b,
-            span,
-        },
-        PlistValue::Real(r) => NuValue::Float {
-            val: *r,
-            span,
-        },
-        PlistValue::Date(d) => NuValue::Date {
-            val: convert_date(d),
-            span,
-        },
-        PlistValue::Integer(i) => NuValue::Int {
-            val: i.as_signed().unwrap(),
-            span,
-        },
-        PlistValue::Uid(uid) => NuValue::Float {
-            val: f64::from_bits(uid.get()),
-            span,
-        },
-        PlistValue::Data(data) => NuValue::Binary {
-            val: data.to_owned(),
-            span,
-        },
-        PlistValue::Array(arr) => NuValue::List {
-            vals: convert_array(arr),
-            span,
-        },
-        PlistValue::Dictionary(dict) => convert_dict(dict),
-        _ => NuValue::Nothing {
-            span,
-        },
+        PlistValue::String(s) => Ok(NuValue::string(s.to_owned(), span)),
+        PlistValue::Boolean(b) => Ok(NuValue::bool(*b, span)),
+        PlistValue::Real(r) => Ok(NuValue::float(*r, span)),
+        PlistValue::Date(d) => Ok(NuValue::date(convert_date(d), span)),
+        PlistValue::Integer(i) => {
+            let signed = i
+                .as_signed()
+                .ok_or_else(|| build_label_error(format!("Cannot convert {i} to i64"), &span))?;
+            Ok(NuValue::int(signed, span))
+        }
+        PlistValue::Uid(uid) => Ok(NuValue::float(f64::from_bits(uid.get()), span)),
+        PlistValue::Data(data) => Ok(NuValue::binary(data.to_owned(), span)),
+        PlistValue::Array(arr) => Ok(NuValue::list(convert_array(arr)?, span)),
+        PlistValue::Dictionary(dict) => Ok(convert_dict(dict)?),
+        _ => Ok(NuValue::nothing(span)),
     }
 }
 
-fn convert_dict(dict: &Dictionary) -> NuValue {
+fn convert_dict(dict: &Dictionary) -> Result<NuValue, LabeledError> {
     let cols: Vec<String> = dict.keys().cloned().collect();
-    let vals: Vec<NuValue> = dict
-        .values()
-        .map(convert_plist_value)
-        .collect();
-    NuValue::Record {
-        cols,
-        vals,
-        span: Span::test_data(),
-    }
+    let vals: Result<Vec<NuValue>, LabeledError> = dict.values().map(convert_plist_value).collect();
+    Ok(NuValue::record(
+        Record::from_raw_cols_vals(cols, vals?),
+        Span::test_data(),
+    ))
 }
 
-fn convert_array(plist_array: &Vec<PlistValue>) -> Vec<NuValue> {
-    plist_array
-        .iter()
-        .map(convert_plist_value)
-        .collect()
+fn convert_array(plist_array: &[PlistValue]) -> Result<Vec<NuValue>, LabeledError> {
+    plist_array.iter().map(convert_plist_value).collect()
 }
 
 pub fn convert_date(plist_date: &PlistDate) -> DateTime<FixedOffset> {
