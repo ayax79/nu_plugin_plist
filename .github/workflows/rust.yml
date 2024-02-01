@@ -18,8 +18,6 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Clippy
-        run: cargo clippy --workspace 
+        run: cargo clippy --workspace
       - name: cargo fmt
         run: cargo fmt --all -- --check
-
-
