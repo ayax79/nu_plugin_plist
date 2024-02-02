@@ -1,0 +1,3 @@
+[tasks.clippy]
+command = "cargo"
+args = [ "clippy", "--", "-Dwarnings", "-Dclippy::unwrap_used"  ]
