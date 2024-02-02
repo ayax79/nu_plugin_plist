@@ -149,6 +149,7 @@ fn convert_nu_value(nu_val: &NuValue) -> Result<PlistValue, LabeledError> {
                 .map_err(|e| build_label_error(format!("{}", e), &span))?;
             convert_nu_dict(record)
         }
+        NuValue::Filesize { val, .. } => Ok(PlistValue::Integer(Into::<Integer>::into(*val))),
         _ => Err(build_label_error(
             format!("{:?} is not convertible", nu_val),
             &span,
