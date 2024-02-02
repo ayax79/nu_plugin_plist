@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "nu_plugin_plist"
-version = "0.89.1"
+version = "0.89.2"
 dependencies = [
  "chrono",
  "nu-plugin",
