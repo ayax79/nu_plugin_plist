@@ -34,6 +34,7 @@ impl Plugin for NuPlist {
     fn run(
         &mut self,
         name: &str,
+        _config: &Option<NuValue>,
         call: &EvaluatedCall,
         input: &NuValue,
     ) -> Result<NuValue, LabeledError> {
@@ -42,13 +43,13 @@ impl Plugin for NuPlist {
                 NuValue::String { val, .. } => {
                     let plist = plist::from_bytes(val.as_bytes())
                         .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                    let converted = convert_plist_value(&plist)?;
+                    let converted = convert_plist_value(&plist, call.head)?;
                     Ok(converted)
                 }
                 NuValue::Binary { val, .. } => {
                     let plist = plist::from_bytes(val)
                         .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                    let converted = convert_plist_value(&plist)?;
+                    let converted = convert_plist_value(&plist, call.head)?;
                     Ok(converted)
                 }
                 _ => Err(build_label_error(
@@ -59,7 +60,7 @@ impl Plugin for NuPlist {
         } else {
             let plist_val = convert_nu_value(input)?;
             let mut out = Vec::new();
-            if call.has_flag("binary") {
+            if call.has_flag("binary")? {
                 plist::to_writer_binary(&mut out, &plist_val)
                     .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
                 Ok(NuValue::binary(out, input.span()))
@@ -84,8 +85,7 @@ fn build_label_error(msg: String, span: &Span) -> LabeledError {
     }
 }
 
-fn convert_plist_value(plist_val: &PlistValue) -> Result<NuValue, LabeledError> {
-    let span = Span::test_data();
+fn convert_plist_value(plist_val: &PlistValue, span: Span) -> Result<NuValue, LabeledError> {
     match plist_val {
         PlistValue::String(s) => Ok(NuValue::string(s.to_owned(), span)),
         PlistValue::Boolean(b) => Ok(NuValue::bool(*b, span)),
@@ -99,23 +99,29 @@ fn convert_plist_value(plist_val: &PlistValue) -> Result<NuValue, LabeledError> 
         }
         PlistValue::Uid(uid) => Ok(NuValue::float(uid.get() as f64, span)),
         PlistValue::Data(data) => Ok(NuValue::binary(data.to_owned(), span)),
-        PlistValue::Array(arr) => Ok(NuValue::list(convert_array(arr)?, span)),
-        PlistValue::Dictionary(dict) => Ok(convert_dict(dict)?),
+        PlistValue::Array(arr) => Ok(NuValue::list(convert_array(arr, span)?, span)),
+        PlistValue::Dictionary(dict) => Ok(convert_dict(dict, span)?),
         _ => Ok(NuValue::nothing(span)),
     }
 }
 
-fn convert_dict(dict: &Dictionary) -> Result<NuValue, LabeledError> {
+fn convert_dict(dict: &Dictionary, span: Span) -> Result<NuValue, LabeledError> {
     let cols: Vec<String> = dict.keys().cloned().collect();
-    let vals: Result<Vec<NuValue>, LabeledError> = dict.values().map(convert_plist_value).collect();
+    let vals: Result<Vec<NuValue>, LabeledError> = dict
+        .values()
+        .map(|v| convert_plist_value(v, span))
+        .collect();
     Ok(NuValue::record(
-        Record::from_raw_cols_vals(cols, vals?),
-        Span::test_data(),
+        Record::from_raw_cols_vals(cols, vals?, span, span)?,
+        span,
     ))
 }
 
-fn convert_array(plist_array: &[PlistValue]) -> Result<Vec<NuValue>, LabeledError> {
-    plist_array.iter().map(convert_plist_value).collect()
+fn convert_array(plist_array: &[PlistValue], span: Span) -> Result<Vec<NuValue>, LabeledError> {
+    plist_array
+        .iter()
+        .map(|v| convert_plist_value(v, span))
+        .collect()
 }
 
 pub fn convert_date(plist_date: &PlistDate) -> DateTime<FixedOffset> {
@@ -176,7 +182,7 @@ mod test {
     #[test]
     fn test_convert_string() {
         let plist_val = PlistValue::String("hello".to_owned());
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(
             result,
             Ok(NuValue::string("hello".to_owned(), Span::test_data()))
@@ -186,21 +192,21 @@ mod test {
     #[test]
     fn test_convert_boolean() {
         let plist_val = PlistValue::Boolean(true);
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(result, Ok(NuValue::bool(true, Span::test_data())));
     }
 
     #[test]
     fn test_convert_real() {
         let plist_val = PlistValue::Real(3.14);
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(result, Ok(NuValue::float(3.14, Span::test_data())));
     }
 
     #[test]
     fn test_convert_integer() {
         let plist_val = PlistValue::Integer(42.into());
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(result, Ok(NuValue::int(42, Span::test_data())));
     }
 
@@ -209,7 +215,7 @@ mod test {
         let v = 12345678_u64;
         let uid = Uid::new(v);
         let plist_val = PlistValue::Uid(uid);
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(result, Ok(NuValue::float(v as f64, Span::test_data())));
     }
 
@@ -217,7 +223,7 @@ mod test {
     fn test_convert_data() {
         let data = vec![0x41, 0x42, 0x43];
         let plist_val = PlistValue::Data(data.clone());
-        let result = convert_plist_value(&plist_val);
+        let result = convert_plist_value(&plist_val, Span::test_data());
         assert_eq!(result, Ok(NuValue::binary(data, Span::test_data())));
     }
 
@@ -237,7 +243,7 @@ mod test {
         let mut dict = Dictionary::new();
         dict.insert("a".to_string(), PlistValue::String("c".to_string()));
         dict.insert("b".to_string(), PlistValue::String("d".to_string()));
-        let nu_dict = convert_dict(&dict).unwrap();
+        let nu_dict = convert_dict(&dict, Span::test_data()).unwrap();
         assert_eq!(
             nu_dict,
             NuValue::record(
@@ -246,9 +252,12 @@ mod test {
                     vec![
                         NuValue::string("c".to_string(), Span::test_data()),
                         NuValue::string("d".to_string(), Span::test_data())
-                    ]
-                ),
-                Span::test_data()
+                    ],
+                    Span::test_data(),
+                    Span::test_data(),
+                )
+                .expect("failed to create record"),
+                Span::test_data(),
             )
         );
     }
@@ -258,7 +267,7 @@ mod test {
         let mut arr = Vec::new();
         arr.push(PlistValue::String("a".to_string()));
         arr.push(PlistValue::String("b".to_string()));
-        let nu_arr = convert_array(&arr).unwrap();
+        let nu_arr = convert_array(&arr, Span::test_data()).unwrap();
         assert_eq!(
             nu_arr,
             vec![
