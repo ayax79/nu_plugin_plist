@@ -18,7 +18,7 @@ to write a plist:
 ps | to plist
 ```
 
-Note: this requires Nushell 0.89 or later
+Note: this requires Nushell 0.92 or later
 
 To install:
 
