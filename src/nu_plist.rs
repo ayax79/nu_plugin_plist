@@ -1,88 +1,122 @@
 use std::time::SystemTime;
 
 use chrono::{DateTime, FixedOffset, Offset, Utc};
-use nu_plugin::{EvaluatedCall, LabeledError, Plugin};
-use nu_protocol::{Category, PluginExample, PluginSignature, Record, Span, Type, Value as NuValue};
+use nu_plugin::{EngineInterface, EvaluatedCall, Plugin, PluginCommand, SimplePluginCommand};
+use nu_protocol::{Category, Example, LabeledError, Record, Signature, Span, Value as NuValue};
 use plist::{Date as PlistDate, Dictionary, Integer, Value as PlistValue};
 
-pub struct NuPlist;
+pub struct NuPlistPlugin;
+struct FromPlist;
+struct IntoPlist;
 
-impl Plugin for NuPlist {
-    fn signature(&self) -> Vec<PluginSignature> {
-        vec![
-            PluginSignature::build("from plist")
-                .input_output_types(vec![(Type::String, Type::Any)])
-                .usage("Parse text as an Apple plist document")
-                .plugin_examples(vec![PluginExample {
-                    example: "cat file.plist | from plist".to_string(),
-                    description: "Convert a plist file to a table".to_string(),
-                    result: None,
-                }])
-                .category(Category::Formats),
-            PluginSignature::build("to plist")
-                .usage("Convert Nu values into plist")
-                .switch("binary", "Output plist in binary format", Some('b'))
-                .plugin_examples(vec![PluginExample {
-                    example: "{ a: 3 } | to plist".to_string(),
-                    description: "Convert a table into a plist file".to_string(),
-                    result: None,
-                }])
-                .category(Category::Formats),
-        ]
+impl Plugin for NuPlistPlugin {
+    fn commands(&self) -> Vec<Box<dyn nu_plugin::PluginCommand<Plugin = Self>>> {
+        vec![Box::new(FromPlist), Box::new(IntoPlist)]
+    }
+}
+impl SimplePluginCommand for IntoPlist {
+    type Plugin = NuPlistPlugin;
+
+    fn name(&self) -> &str {
+        "to plist"
+    }
+
+    fn usage(&self) -> &str {
+        "Convert Nu values into plist"
+    }
+
+    fn examples(&self) -> Vec<Example> {
+        vec![Example {
+            example: "{ a: 3 } | to plist",
+            description: "Convert a table into a plist file",
+            result: None,
+        }]
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(PluginCommand::name(self))
+            .switch("binary", "Output plist in binary format", Some('b'))
+            .category(Category::Formats)
     }
 
     fn run(
-        &mut self,
-        name: &str,
-        _config: &Option<NuValue>,
+        &self,
+        _plugin: &NuPlistPlugin,
+        _engine: &EngineInterface,
         call: &EvaluatedCall,
         input: &NuValue,
     ) -> Result<NuValue, LabeledError> {
-        if name == "from plist" {
-            match input {
-                NuValue::String { val, .. } => {
-                    let plist = plist::from_bytes(val.as_bytes())
-                        .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                    let converted = convert_plist_value(&plist, call.head)?;
-                    Ok(converted)
-                }
-                NuValue::Binary { val, .. } => {
-                    let plist = plist::from_bytes(val)
-                        .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                    let converted = convert_plist_value(&plist, call.head)?;
-                    Ok(converted)
-                }
-                _ => Err(build_label_error(
-                    format!("Invalid input, must be string not: {:?}", input),
-                    &call.head,
-                )),
-            }
+        let plist_val = convert_nu_value(input)?;
+        let mut out = Vec::new();
+        if call.has_flag("binary")? {
+            plist::to_writer_binary(&mut out, &plist_val)
+                .map_err(|e| build_label_error(format!("{}", e), input.span()))?;
+            Ok(NuValue::binary(out, input.span()))
         } else {
-            let plist_val = convert_nu_value(input)?;
-            let mut out = Vec::new();
-            if call.has_flag("binary")? {
-                plist::to_writer_binary(&mut out, &plist_val)
-                    .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                Ok(NuValue::binary(out, input.span()))
-            } else {
-                plist::to_writer_xml(&mut out, &plist_val)
-                    .map_err(|e| build_label_error(format!("{}", e), &input.span()))?;
-                Ok(NuValue::string(
-                    String::from_utf8(out)
-                        .map_err(|e| build_label_error(format!("{}", e), &input.span()))?,
-                    input.span(),
-                ))
-            }
+            plist::to_writer_xml(&mut out, &plist_val)
+                .map_err(|e| build_label_error(format!("{}", e), input.span()))?;
+            Ok(NuValue::string(
+                String::from_utf8(out)
+                    .map_err(|e| build_label_error(format!("{}", e), input.span()))?,
+                input.span(),
+            ))
         }
     }
 }
 
-fn build_label_error(msg: String, span: &Span) -> LabeledError {
-    LabeledError {
-        label: "ERROR from plugin".to_string(),
-        msg,
-        span: Some(span.to_owned()),
+impl SimplePluginCommand for FromPlist {
+    type Plugin = NuPlistPlugin;
+
+    fn name(&self) -> &str {
+        "from plist"
     }
+
+    fn usage(&self) -> &str {
+        "Convert Nu values into plist"
+    }
+
+    fn examples(&self) -> Vec<Example> {
+        vec![Example {
+            example: "{ a: 3 } | to plist",
+            description: "Convert a table into a plist file",
+            result: None,
+        }]
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(PluginCommand::name(self)).category(Category::Formats)
+    }
+
+    fn run(
+        &self,
+        _plugin: &NuPlistPlugin,
+        _engine: &EngineInterface,
+        call: &EvaluatedCall,
+        input: &NuValue,
+    ) -> Result<NuValue, LabeledError> {
+        match input {
+            NuValue::String { val, .. } => {
+                let plist = plist::from_bytes(val.as_bytes())
+                    .map_err(|e| build_label_error(format!("{}", e), input.span()))?;
+                let converted = convert_plist_value(&plist, call.head)?;
+                Ok(converted)
+            }
+            NuValue::Binary { val, .. } => {
+                let plist = plist::from_bytes(val)
+                    .map_err(|e| build_label_error(format!("{}", e), input.span()))?;
+                let converted = convert_plist_value(&plist, call.head)?;
+                Ok(converted)
+            }
+            _ => Err(build_label_error(
+                format!("Invalid input, must be string not: {:?}", input),
+                call.head,
+            )),
+        }
+    }
+}
+
+fn build_label_error(msg: String, span: Span) -> LabeledError {
+    LabeledError::new("ERROR from plugin").with_label(msg, span)
 }
 
 fn convert_plist_value(plist_val: &PlistValue, span: Span) -> Result<NuValue, LabeledError> {
@@ -94,7 +128,7 @@ fn convert_plist_value(plist_val: &PlistValue, span: Span) -> Result<NuValue, La
         PlistValue::Integer(i) => {
             let signed = i
                 .as_signed()
-                .ok_or_else(|| build_label_error(format!("Cannot convert {i} to i64"), &span))?;
+                .ok_or_else(|| build_label_error(format!("Cannot convert {i} to i64"), span))?;
             Ok(NuValue::int(signed, span))
         }
         PlistValue::Uid(uid) => Ok(NuValue::float(uid.get() as f64, span)),
@@ -152,13 +186,13 @@ fn convert_nu_value(nu_val: &NuValue) -> Result<PlistValue, LabeledError> {
             let record = val.collect()?;
             let record = record
                 .as_record()
-                .map_err(|e| build_label_error(format!("{}", e), &span))?;
+                .map_err(|e| build_label_error(format!("{}", e), span))?;
             convert_nu_dict(record)
         }
         NuValue::Filesize { val, .. } => Ok(PlistValue::Integer(Into::<Integer>::into(*val))),
         _ => Err(build_label_error(
             format!("{:?} is not convertible", nu_val),
-            &span,
+            span,
         )),
     }
 }
