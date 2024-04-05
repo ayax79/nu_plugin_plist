@@ -1,9 +1,9 @@
 use nu_plugin::{serve_plugin, MsgPackSerializer};
 
-use nu_plist::NuPlist;
+use nu_plist::NuPlistPlugin;
 
 mod nu_plist;
 
 fn main() {
-    serve_plugin(&mut NuPlist {}, MsgPackSerializer {});
+    serve_plugin(&NuPlistPlugin, MsgPackSerializer);
 }
