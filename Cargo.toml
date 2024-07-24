@@ -1,12 +1,12 @@
 [package]
 name = "nu_plugin_plist"
 description = "Plist parsing for nushell"
-version = "0.95.0"
+version = "0.96.0"
 edition = "2021"
 license = "MIT"
 
 [dependencies]
 plist = "1.6"
-nu-plugin = "0.95"
-nu-protocol = "0.95"
+nu-plugin = "0.96"
+nu-protocol = "0.96"
 chrono = "0.4"

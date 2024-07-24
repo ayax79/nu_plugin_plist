@@ -15,7 +15,7 @@ impl Plugin for NuPlistPlugin {
     }
 
     fn version(&self) -> String {
-      env!("CARGO_PKG_VERSION").into()
+        env!("CARGO_PKG_VERSION").into()
     }
 }
 
