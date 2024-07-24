@@ -13,7 +13,12 @@ impl Plugin for NuPlistPlugin {
     fn commands(&self) -> Vec<Box<dyn nu_plugin::PluginCommand<Plugin = Self>>> {
         vec![Box::new(FromPlist), Box::new(IntoPlist)]
     }
+
+    fn version(&self) -> String {
+      env!("CARGO_PKG_VERSION").into()
+    }
 }
+
 impl SimplePluginCommand for IntoPlist {
     type Plugin = NuPlistPlugin;
 
