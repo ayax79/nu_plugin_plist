@@ -1,4 +1,10 @@
 # Plist plugin for Nushell
+
+> [!IMPORTANT]
+>
+> The functionality of the plist plugin is moving to [nu_plugin_formats](https://github.com/nushell/nushell/tree/main/crates/nu_plugin_formats) for nushell release 0.97.
+> 0.96 will be the final release of this plugin.
+
 Provides the ability to read and write Apple plists.
 
 To read a plist:
